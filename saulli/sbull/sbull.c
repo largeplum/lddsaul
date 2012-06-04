@@ -2,7 +2,7 @@
  * Sample disk driver, from the beginning.
  */
 
-#include <linux/config.h>
+#include <linux/configfs.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
@@ -101,24 +101,28 @@ static void sbull_transfer(struct sbull_dev *dev, unsigned long sector,
 /*
  * The simple form of the request function.
  */
-static void sbull_request(request_queue_t *q)
+static void sbull_request(struct request_queue *q)
 {
 	struct request *req;
 
-	while ((req = elv_next_request(q)) != NULL) {
-		struct sbull_dev *dev = req->rq_disk->private_data;
-		if (! blk_fs_request(req)) {
-			printk (KERN_NOTICE "Skip non-fs request\n");
-			end_request(req, 0);
-			continue;
-		}
-    //    	printk (KERN_NOTICE "Req dev %d dir %ld sec %ld, nr %d f %lx\n",
-    //    			dev - Devices, rq_data_dir(req),
-    //    			req->sector, req->current_nr_sectors,
-    //    			req->flags);
-		sbull_transfer(dev, req->sector, req->current_nr_sectors,
-				req->buffer, rq_data_dir(req));
-		end_request(req, 1);
+	while ((req = blk_fetch_request(q)) != NULL) {
+		do {
+			struct sbull_dev *dev = req->rq_disk->private_data;
+			if (! blk_fs_request(req)) {
+				printk (KERN_NOTICE "Skip non-fs request\n");
+				if (!blk_end_request_cur(req, -1))
+					req = NULL;
+				continue;
+			}
+			//    	printk (KERN_NOTICE "Req dev %d dir %ld sec %ld, nr %d f %lx\n",
+			//    			dev - Devices, rq_data_dir(req),
+			//    			req->sector, req->current_nr_sectors,
+			//    			req->flags);
+			sbull_transfer(dev, blk_rq_pos(req), blk_rq_sectors(req),
+				       req->buffer, rq_data_dir(req));
+			if (!blk_end_request_cur(req, 0))
+				req = NULL;
+		} while(req != NULL)
 	}
 }
 
