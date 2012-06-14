@@ -108,9 +108,9 @@ static void sbull_request(struct request_queue *q)
 	while ((req = blk_fetch_request(q)) != NULL) {
 		do {
 			struct sbull_dev *dev = req->rq_disk->private_data;
-			if (! blk_fs_request(req)) {
+			if (req->cmd_type != REQ_TYPE_FS) {
 				printk (KERN_NOTICE "Skip non-fs request\n");
-				if (!blk_end_request_cur(req, -1))
+				if (!__blk_end_request_cur(req, -1))
 					req = NULL;
 				continue;
 			}
@@ -118,11 +118,11 @@ static void sbull_request(struct request_queue *q)
 			//    			dev - Devices, rq_data_dir(req),
 			//    			req->sector, req->current_nr_sectors,
 			//    			req->flags);
-			sbull_transfer(dev, blk_rq_pos(req), blk_rq_sectors(req),
+			sbull_transfer(dev, blk_rq_pos(req), blk_rq_cur_sectors(req),
 				       req->buffer, rq_data_dir(req));
-			if (!blk_end_request_cur(req, 0))
+			if (!__blk_end_request_cur(req, 0))
 				req = NULL;
-		} while(req != NULL)
+		} while(req != NULL);
 	}
 }
 
@@ -130,61 +130,61 @@ static void sbull_request(struct request_queue *q)
 /*
  * Transfer a single BIO.
  */
-static int sbull_xfer_bio(struct sbull_dev *dev, struct bio *bio)
-{
-	int i;
-	struct bio_vec *bvec;
-	sector_t sector = bio->bi_sector;
+/* static int sbull_xfer_bio(struct sbull_dev *dev, struct bio *bio) */
+/* { */
+/* 	int i; */
+/* 	struct bio_vec *bvec; */
+/* 	sector_t sector = bio->bi_sector; */
 
-	/* Do each segment independently. */
-	bio_for_each_segment(bvec, bio, i) {
-		char *buffer = __bio_kmap_atomic(bio, i, KM_USER0);
-		sbull_transfer(dev, sector, bio_cur_sectors(bio),
-				buffer, bio_data_dir(bio) == WRITE);
-		sector += bio_cur_sectors(bio);
-		__bio_kunmap_atomic(bio, KM_USER0);
-	}
-	return 0; /* Always "succeed" */
-}
+/* 	/\* Do each segment independently. *\/ */
+/* 	bio_for_each_segment(bvec, bio, i) { */
+/* 		char *buffer = __bio_kmap_atomic(bio, i, KM_USER0); */
+/* 		sbull_transfer(dev, sector, bio_cur_sectors(bio), */
+/* 				buffer, bio_data_dir(bio) == WRITE); */
+/* 		sector += bio_cur_sectors(bio); */
+/* 		__bio_kunmap_atomic(bio, KM_USER0); */
+/* 	} */
+/* 	return 0; /\* Always "succeed" *\/ */
+/* } */
 
 /*
  * Transfer a full request.
  */
-static int sbull_xfer_request(struct sbull_dev *dev, struct request *req)
-{
-	struct bio *bio;
-	int nsect = 0;
+/* static int sbull_xfer_request(struct sbull_dev *dev, struct request *req) */
+/* { */
+/* 	struct bio *bio; */
+/* 	int nsect = 0; */
     
-	rq_for_each_bio(bio, req) {
-		sbull_xfer_bio(dev, bio);
-		nsect += bio->bi_size/KERNEL_SECTOR_SIZE;
-	}
-	return nsect;
-}
+/* 	rq_for_each_bio(bio, req) { */
+/* 		sbull_xfer_bio(dev, bio); */
+/* 		nsect += bio->bi_size/KERNEL_SECTOR_SIZE; */
+/* 	} */
+/* 	return nsect; */
+/* } */
 
 
 
 /*
  * Smarter request function that "handles clustering".
  */
-static void sbull_full_request(request_queue_t *q)
+static void sbull_full_request(struct request_queue *q)
 {
-	struct request *req;
-	int sectors_xferred;
-	struct sbull_dev *dev = q->queuedata;
+	/* struct request *req; */
+	/* int sectors_xferred; */
+	/* struct sbull_dev *dev = q->queuedata; */
 
-	while ((req = elv_next_request(q)) != NULL) {
-		if (! blk_fs_request(req)) {
-			printk (KERN_NOTICE "Skip non-fs request\n");
-			end_request(req, 0);
-			continue;
-		}
-		sectors_xferred = sbull_xfer_request(dev, req);
-		if (! end_that_request_first(req, 1, sectors_xferred)) {
-			blkdev_dequeue_request(req);
-			end_that_request_last(req);
-		}
-	}
+	/* while ((req = elv_next_request(q)) != NULL) { */
+	/* 	if (! blk_fs_request(req)) { */
+	/* 		printk (KERN_NOTICE "Skip non-fs request\n"); */
+	/* 		end_request(req, 0); */
+	/* 		continue; */
+	/* 	} */
+	/* 	sectors_xferred = sbull_xfer_request(dev, req); */
+	/* 	if (! end_that_request_first(req, 1, sectors_xferred)) { */
+	/* 		blkdev_dequeue_request(req); */
+	/* 		end_that_request_last(req); */
+	/* 	} */
+	/* } */
 }
 
 
@@ -192,13 +192,13 @@ static void sbull_full_request(request_queue_t *q)
 /*
  * The direct make request version.
  */
-static int sbull_make_request(request_queue_t *q, struct bio *bio)
+static int sbull_make_request(struct request_queue *q, struct bio *bio)
 {
-	struct sbull_dev *dev = q->queuedata;
-	int status;
+	/* struct sbull_dev *dev = q->queuedata; */
+	/* int status; */
 
-	status = sbull_xfer_bio(dev, bio);
-	bio_endio(bio, bio->bi_size, status);
+	/* status = sbull_xfer_bio(dev, bio); */
+	/* bio_endio(bio, bio->bi_size, status); */
 	return 0;
 }
 
@@ -207,23 +207,24 @@ static int sbull_make_request(request_queue_t *q, struct bio *bio)
  * Open and close.
  */
 
-static int sbull_open(struct inode *inode, struct file *filp)
+/* static int sbull_open(struct inode *inode, struct file *filp) */
+static int sbull_open(struct block_device *bdev, fmode_t m)
 {
-	struct sbull_dev *dev = inode->i_bdev->bd_disk->private_data;
+	struct sbull_dev *dev = bdev->bd_disk->private_data;
 
 	del_timer_sync(&dev->timer);
-	filp->private_data = dev;
 	spin_lock(&dev->lock);
 	if (! dev->users) 
-		check_disk_change(inode->i_bdev);
+		check_disk_change(bdev);
 	dev->users++;
 	spin_unlock(&dev->lock);
 	return 0;
 }
 
-static int sbull_release(struct inode *inode, struct file *filp)
+/* static int sbull_release(struct inode *inode, struct file *filp) */
+static int sbull_release(struct gendisk *gd, fmode_t m)
 {
-	struct sbull_dev *dev = inode->i_bdev->bd_disk->private_data;
+	struct sbull_dev *dev = gd->private_data;
 
 	spin_lock(&dev->lock);
 	dev->users--;
@@ -282,12 +283,13 @@ void sbull_invalidate(unsigned long ldev)
  * The ioctl() implementation
  */
 
-int sbull_ioctl (struct inode *inode, struct file *filp,
-                 unsigned int cmd, unsigned long arg)
+/* int sbull_ioctl (struct inode *inode, struct file *filp, */
+/*                  unsigned int cmd, unsigned long arg) */
+int sbull_ioctl (struct block_device *bdev, fmode_t m, unsigned cmd, unsigned long arg)
 {
 	long size;
 	struct hd_geometry geo;
-	struct sbull_dev *dev = filp->private_data;
+	struct sbull_dev *dev = bdev->bd_disk->private_data;
 
 	switch(cmd) {
 	    case HDIO_GETGEO:
@@ -330,6 +332,7 @@ static struct block_device_operations sbull_ops = {
  */
 static void setup_device(struct sbull_dev *dev, int which)
 {
+	printk(KERN_EMERG "sbull: setup_device\n");
 	/*
 	 * Get some memory.
 	 */
@@ -377,7 +380,7 @@ static void setup_device(struct sbull_dev *dev, int which)
 			goto out_vfree;
 		break;
 	}
-	blk_queue_hardsect_size(dev->queue, hardsect_size);
+	blk_queue_logical_block_size(dev->queue, hardsect_size);
 	dev->queue->queuedata = dev;
 	/*
 	 * And the gendisk structure.
@@ -407,6 +410,8 @@ static void setup_device(struct sbull_dev *dev, int which)
 static int __init sbull_init(void)
 {
 	int i;
+
+	printk(KERN_EMERG "sbull: sbull_init\n");
 	/*
 	 * Get registered.
 	 */
@@ -421,14 +426,14 @@ static int __init sbull_init(void)
 	Devices = kmalloc(ndevices*sizeof (struct sbull_dev), GFP_KERNEL);
 	if (Devices == NULL)
 		goto out_unregister;
-	for (i = 0; i < ndevices; i++) 
+	for (i = 0; i < ndevices; i++)
 		setup_device(Devices + i, i);
     
 	return 0;
 
   out_unregister:
-	unregister_blkdev(sbull_major, "sbd");
-	return -ENOMEM;
+  	unregister_blkdev(sbull_major, "sbd");
+  	return -ENOMEM;
 }
 
 static void sbull_exit(void)
@@ -445,7 +450,7 @@ static void sbull_exit(void)
 		}
 		if (dev->queue) {
 			if (request_mode == RM_NOQUEUE)
-				blk_put_queue(dev->queue);
+				blk_cleanup_queue(dev->queue);
 			else
 				blk_cleanup_queue(dev->queue);
 		}
