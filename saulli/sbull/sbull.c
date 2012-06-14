@@ -29,7 +29,7 @@ static int sbull_major = 0;
 module_param(sbull_major, int, 0);
 static int hardsect_size = 512;
 module_param(hardsect_size, int, 0);
-static int nsectors = 1024;	/* How big the drive is */
+static int nsectors = 1024*4;	/* How big the drive is */
 module_param(nsectors, int, 0);
 static int ndevices = 4;
 module_param(ndevices, int, 0);
@@ -299,7 +299,7 @@ int sbull_ioctl (struct block_device *bdev, fmode_t m, unsigned cmd, unsigned lo
 		 * and calculate the corresponding number of cylinders.  We set the
 		 * start of data at sector four.
 		 */
-		size = dev->size*(hardsect_size/KERNEL_SECTOR_SIZE);
+		size = dev->size/KERNEL_SECTOR_SIZE;
 		geo.cylinders = (size & ~0x3f) >> 6;
 		geo.heads = 4;
 		geo.sectors = 16;
